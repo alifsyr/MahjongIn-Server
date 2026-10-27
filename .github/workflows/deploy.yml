@@ -1,0 +1,65 @@
+name: CI/CD Pipeline - Test & Deploy to Render
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    name: 🧪 Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Compile TypeScript
+        run: npm run build
+
+      - name: Run Unit Tests
+        run: npm test
+
+  deploy:
+    name: 🚀 Deploy to Render
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Trigger Render Deploy Hook
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "❌ ERROR: Secret 'RENDER_DEPLOY_HOOK_URL' belum diset di GitHub Repository."
+            echo "Cara set:"
+            echo "1. Ambil Deploy Hook URL dari Render Dashboard (Settings -> Deploy Hook)"
+            echo "2. Masukkan ke GitHub: Repo Settings -> Secrets and variables -> Actions -> New repository secret"
+            exit 1
+          fi
+
+          echo "Mengirim instruksi deployment ke Render..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$DEPLOY_HOOK")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "Response HTTP Status: $HTTP_CODE"
+          echo "Response Body: $BODY"
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Deployment berhasil dipicu di Render!"
+          else
+            echo "❌ Gagal memicu deployment. HTTP Code: $HTTP_CODE"
+            exit 1
+          fi

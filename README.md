@@ -69,6 +69,20 @@ Server ini telah dilengkapi file konfigurasi `render.yaml` untuk deploy 1-klik d
    - **Health Check Path**: `/health`
 5. Klik **Apply**. Dalam 2 menit server Anda akan aktif dengan URL publik HTTPS (contoh: `https://mahjongin-server.onrender.com`).
 
+## CI/CD Otomatis dengan GitHub Actions
+
+Pipeline CI/CD otomatis telah terpasang di [`.github/workflows/deploy.yml`](file:///.github/workflows/deploy.yml):
+
+* **Alur**: Setiap kali ada `git push` ke branch `master`:
+  1. Menjalankan `npm ci` & kompilasi TypeScript (`npm run build`).
+  2. Menjalankan seluruh pengujian unit logika aturan (`npm test`).
+  3. Jika semua lulus, otomatis memicu deployment ke Render via Deploy Hook.
+* **Setup Secret**:
+  1. Di Render Dashboard: Masuk ke Service Anda -> tab **Settings** -> bagian **Deploy Hook**.
+  2. Salin URL Deploy Hook (format: `https://api.render.com/deploy/srv-...`).
+  3. Di GitHub: Masuk ke **Settings** -> **Secrets and variables** -> **Actions**.
+  4. Tambahkan secret baru bernama `RENDER_DEPLOY_HOOK_URL` dan isi nilainya dengan URL tersebut.
+
 ## Skills Terpasang
 
 Repositori ini telah dilengkapi dengan skill agen pada `.agents/skills/`:
