@@ -10,3 +10,5 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: SERVER_URL
+        value: https://mahjongin-server.onrender.com
