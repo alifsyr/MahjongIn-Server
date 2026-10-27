@@ -193,7 +193,6 @@ export function calculateFan(
     items.push({ name: 'Tsumo (Ambil Sendiri)', fan: 1 });
   }
 
-  // Seat matching flowers
   player.flowers.forEach((f) => {
     if ((f - 34) % 4 === player.seat) {
       items.push({ name: `Bunga Kursi (${tileShort(f)})`, fan: 1 });
@@ -211,7 +210,6 @@ export function calculateFan(
     items.push({ name: 'Tanpa Bunga (Wu Hua)', fan: 1 });
   }
 
-  // Dragon Pungs
   const dragonNames: Record<number, string> = { 31: 'Naga Merah (中)', 32: 'Naga Hijau (發)', 33: 'Naga Putih (白)' };
   [31, 32, 33].forEach((dragon) => {
     if (allGroups.some((g) => g.type === 'pong' && g.tile === dragon)) {
@@ -219,7 +217,6 @@ export function calculateFan(
     }
   });
 
-  // Wind Pungs
   if (allGroups.some((g) => g.type === 'pong' && g.tile === 27 + roundWind)) {
     items.push({ name: `Pung Angin Ronde (${WINDS[roundWind]})`, fan: 1 });
   }
@@ -227,7 +224,6 @@ export function calculateFan(
     items.push({ name: `Pung Angin Kursi (${WINDS[player.seat]})`, fan: 1 });
   }
 
-  // Hand pattern logic
   if (decomp && allGroups.length === 4) {
     const isAllPongs = allGroups.every((g) => g.type === 'pong');
     const isAllChows = allGroups.every((g) => g.type === 'chow') && decomp.pair < 27;

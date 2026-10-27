@@ -78,7 +78,6 @@ export class MahjongRoom {
     this.pendingClaims.clear();
     this.winner = null;
 
-    // Reset round hands
     for (let s = 0; s < 4; s++) {
       const p = this.players[s];
       if (p) {
@@ -89,7 +88,6 @@ export class MahjongRoom {
       }
     }
 
-    // Deal 13 tiles to each
     for (let n = 0; n < 13; n++) {
       for (let s = 0; s < 4; s++) {
         const tile = this.wall.pop();
@@ -97,7 +95,6 @@ export class MahjongRoom {
       }
     }
 
-    // Replace initial flowers
     for (let s = 0; s < 4; s++) {
       this.replaceInitialFlowers(s);
       this.players[s]?.hand.sort((a, b) => a - b);
@@ -166,7 +163,6 @@ export class MahjongRoom {
     this.lastDiscard = { seat, tile };
     this.turnNumber++;
 
-    // Check claims for other 3 players
     this.pendingClaims.clear();
     const claimsObj: { [s: number]: ClaimOption[] } = {};
 
@@ -218,14 +214,12 @@ export class MahjongRoom {
       return { winner: seat, fanSummary: { totalFan: fan.totalFan, basePoints, items: fan.items } };
     }
 
-    // Pon / Kan / Chi
     const player = this.players[seat]!;
     const source = this.players[discarder]!;
     source.discards.pop();
     this.lastDiscard = null;
     this.pendingClaims.clear();
 
-    // Remove consume tiles from hand
     for (const t of selected.consume) {
       const idx = player.hand.indexOf(t);
       if (idx !== -1) player.hand.splice(idx, 1);
@@ -241,7 +235,6 @@ export class MahjongRoom {
     this.phase = 'discard';
 
     if (kind === 'kan') {
-      // Draw Kan replacement
       this.draw(seat);
     }
 

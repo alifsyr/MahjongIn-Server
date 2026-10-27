@@ -180,12 +180,12 @@ io.on('connection', (socket: Socket) => {
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`MahjongIn-Server listening on port ${PORT}`);
 
-  // Keep-Alive Ping: Menjaga server tetap bangun di Render (setiap 10 menit)
+  // Prevent Render free-tier spin down when idle.
   const isProduction = process.env.NODE_ENV === 'production';
   const serverUrl = process.env.RENDER_EXTERNAL_URL || process.env.SERVER_URL || 'https://mahjongin-server.onrender.com';
 
   if (isProduction && serverUrl) {
-    const PING_INTERVAL_MS = 10 * 60 * 1000; // 10 menit
+    const PING_INTERVAL_MS = 10 * 60 * 1000;
     console.log(`[Keep-Alive] Scheduler aktif untuk ${serverUrl} (interval: 10 menit)`);
     setInterval(async () => {
       try {
