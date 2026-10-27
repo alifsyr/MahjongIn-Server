@@ -1,0 +1,20 @@
+{
+  "name": "mahjongin-server",
+  "version": "1.0.0",
+  "description": "Multiplayer Authoritative Backend for Mahjong Jakarta Club (Hong Kong 144 Tiles)",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "node --watch src/server.ts",
+    "test": "node tests/rules.test.mjs"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
