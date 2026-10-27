@@ -55,6 +55,20 @@ npm test
 | `game:over` | `{ winner, fanSummary }` | Notifikasi kemenangan ronde dan rincian Fan. |
 | `error` | `string` | Pesan kesalahan (misal: room penuh atau tidak ditemukan). |
 
+## Deploy Online Gratis (Render.com)
+
+Server ini telah dilengkapi file konfigurasi `render.yaml` untuk deploy 1-klik di **Render.com** (Free Tier):
+
+1. Login ke [dashboard.render.com](https://dashboard.render.com) menggunakan akun GitHub (`alifsyr`).
+2. Klik **New +** -> **Blueprint**.
+3. Pilih repository `alifsyr/MahjongIn-Server`.
+4. Render akan otomatis membaca konfigurasi:
+   - **Region**: Singapore (latensi rendah ke Indonesia).
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+   - **Health Check Path**: `/health`
+5. Klik **Apply**. Dalam 2 menit server Anda akan aktif dengan URL publik HTTPS (contoh: `https://mahjongin-server.onrender.com`).
+
 ## Skills Terpasang
 
 Repositori ini telah dilengkapi dengan skill agen pada `.agents/skills/`:
