@@ -114,9 +114,14 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(session.roomCode);
     if (!room) return;
 
-    const result = room.draw(session.seat);
-    if (result) {
-      broadcastRoomState(room);
+    room.draw(session.seat);
+    broadcastRoomState(room);
+
+    if (room.phase === 'over' && room.winner === null) {
+      io.to(room.code).emit('game:over', {
+        winner: null,
+        isDraw: true
+      });
     }
   });
 
@@ -144,6 +149,11 @@ io.on('connection', (socket: Socket) => {
       io.to(room.code).emit('game:over', {
         winner: result.winner,
         fanSummary: result.fanSummary
+      });
+    } else if (result.isDraw || (room.phase === 'over' && room.winner === null)) {
+      io.to(room.code).emit('game:over', {
+        winner: null,
+        isDraw: true
       });
     }
   });

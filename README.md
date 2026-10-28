@@ -13,6 +13,8 @@ Server ini menggunakan arsitektur **Authoritative Server** (server memegang stat
 - **Kalkulasi Nilai Fan**: Menghitung kombinasi menang Hong Kong (*Ping Hu, Dui Dui Hu, Qing Yi Se, Hun Yi Se, Bunga Kursi, Naga, Angin, Tsumo*).
 - **Anti-Cheat State Masking**: Data `myHand` hanya dikirim ke pemilik kursi. Lawan hanya menerima jumlah ubin (`tileCount`), ubin bunga terbuka, dan buangan publik.
 
+Baru pertama kali main Mahjong? Baca [TUTORIAL.md](TUTORIAL.md).
+
 ## Instalasi dan Menjalankan
 
 ```sh

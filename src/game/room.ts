@@ -118,14 +118,20 @@ export class MahjongRoom {
     }
   }
 
-  public draw(seat: number): { tile: TileId; flowers: TileId[] } | null {
-    if (this.currentTurn !== seat || this.phase !== 'draw' || this.wall.length === 0) return null;
+  private drawTileWithFlowers(seat: number): { tile: TileId; flowers: TileId[] } | null {
+    if (this.wall.length === 0) {
+      this.phase = 'over';
+      return null;
+    }
     const player = this.players[seat];
     if (!player) return null;
 
     const flowers: TileId[] = [];
     let tile = this.wall.pop();
-    if (tile === undefined) return null;
+    if (tile === undefined) {
+      this.phase = 'over';
+      return null;
+    }
 
     while (isFlower(tile) && this.wall.length > 0) {
       flowers.push(tile);
@@ -141,8 +147,20 @@ export class MahjongRoom {
 
     player.hand.push(tile);
     player.hand.sort((a, b) => a - b);
-    this.phase = 'discard';
     return { tile, flowers };
+  }
+
+  public draw(seat: number): { tile: TileId; flowers: TileId[] } | null {
+    if (this.currentTurn !== seat || this.phase !== 'draw') return null;
+    const res = this.drawTileWithFlowers(seat);
+    if (res) {
+      this.phase = 'discard';
+    }
+    return res;
+  }
+
+  public drawReplacement(seat: number): { tile: TileId; flowers: TileId[] } | null {
+    return this.drawTileWithFlowers(seat);
   }
 
   public discard(seat: number, tile: TileId): {
@@ -188,6 +206,7 @@ export class MahjongRoom {
 
   public claim(seat: number, kind: 'chi' | 'pon' | 'kan' | 'ron', choiceIndex = 0): {
     winner: number | null;
+    isDraw?: boolean;
     fanSummary?: { totalFan: number; basePoints: number; items: any[] };
   } {
     const opts = this.pendingClaims.get(seat);
@@ -235,7 +254,10 @@ export class MahjongRoom {
     this.phase = 'discard';
 
     if (kind === 'kan') {
-      this.draw(seat);
+      const drawn = this.drawReplacement(seat);
+      if (!drawn) {
+        return { winner: null, isDraw: true };
+      }
     }
 
     return { winner: null };
