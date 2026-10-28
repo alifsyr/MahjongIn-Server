@@ -5,7 +5,8 @@ import {
   availableClaims,
   isWinningHand,
   calculateFan,
-  fanToPoints
+  fanToPoints,
+  countsFor
 } from './rules.js';
 
 export function claimPriority(kind: 'chi' | 'pon' | 'kan' | 'ron'): number {
@@ -371,6 +372,47 @@ export class MahjongRoom {
     };
   }
 
+  public declareKong(seat: number, tile: TileId): { success: boolean; isDraw?: boolean } {
+    if (this.currentTurn !== seat || this.phase !== 'discard') {
+      return { success: false };
+    }
+    const player = this.players[seat];
+    if (!player) return { success: false };
+
+    // Case 1: Concealed Kong (4 identical tiles in hand)
+    const count = player.hand.filter((t) => t === tile).length;
+    if (count === 4) {
+      player.hand = player.hand.filter((t) => t !== tile);
+      player.melds.push({
+        kind: 'kan',
+        tiles: [tile, tile, tile, tile],
+        from: seat
+      });
+      const rep = this.drawReplacement(seat);
+      if (!rep) {
+        return { success: true, isDraw: true };
+      }
+      return { success: true };
+    }
+
+    // Case 2: Promoted Kong (has open Pong of tile and 1 tile in hand)
+    const existingPong = player.melds.find((m) => m.kind === 'pon' && m.tiles[0] === tile);
+    const hasOneInHand = player.hand.includes(tile);
+    if (existingPong && hasOneInHand) {
+      const idx = player.hand.indexOf(tile);
+      player.hand.splice(idx, 1);
+      existingPong.kind = 'kan';
+      existingPong.tiles.push(tile);
+      const rep = this.drawReplacement(seat);
+      if (!rep) {
+        return { success: true, isDraw: true };
+      }
+      return { success: true };
+    }
+
+    return { success: false };
+  }
+
   public getClientState(seat: number): ClientGameState | null {
     const player = this.players[seat];
     if (!player) return null;
@@ -406,6 +448,17 @@ export class MahjongRoom {
       isWinningHand(player.hand, player.melds.length)
     );
 
+    const canKongTiles: TileId[] = [];
+    if (this.currentTurn === seat && this.phase === 'discard') {
+      const counts = countsFor(player.hand);
+      for (let t = 0; t < 34; t++) {
+        if (counts[t] === 4) canKongTiles.push(t);
+        if (counts[t] >= 1 && player.melds.some((m) => m.kind === 'pon' && m.tiles[0] === t)) {
+          canKongTiles.push(t);
+        }
+      }
+    }
+
     return {
       roomCode: this.code,
       seat,
@@ -420,7 +473,8 @@ export class MahjongRoom {
       lastDiscard: this.lastDiscard,
       pendingClaim,
       turn: this.turnNumber,
-      canTsumo
+      canTsumo,
+      canKongTiles
     };
   }
 }

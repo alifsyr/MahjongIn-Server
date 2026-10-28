@@ -95,6 +95,7 @@ io.on('connection', (socket: Socket) => {
 
     room.fillBots();
     broadcastRoomState(room);
+    scheduleBotAction(room);
   });
 
   socket.on('game:start', () => {
@@ -106,6 +107,7 @@ io.on('connection', (socket: Socket) => {
     room.startGame();
     console.log(`[Game] Started in room ${room.code}`);
     broadcastRoomState(room);
+    scheduleBotAction(room);
   });
 
   socket.on('game:draw', () => {
@@ -122,6 +124,8 @@ io.on('connection', (socket: Socket) => {
         winner: null,
         isDraw: true
       });
+    } else {
+      scheduleBotAction(room);
     }
   });
 
@@ -134,6 +138,7 @@ io.on('connection', (socket: Socket) => {
     const result = room.discard(session.seat, tile);
     if (result.success) {
       broadcastRoomState(room);
+      scheduleBotAction(room);
     }
   });
 
@@ -155,6 +160,8 @@ io.on('connection', (socket: Socket) => {
         winner: null,
         isDraw: true
       });
+    } else {
+      scheduleBotAction(room);
     }
   });
 
@@ -176,6 +183,8 @@ io.on('connection', (socket: Socket) => {
         winner: null,
         isDraw: true
       });
+    } else {
+      scheduleBotAction(room);
     }
   });
 
@@ -196,6 +205,26 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
+  socket.on('game:kong', ({ tile }: { tile: number }) => {
+    const session = socketToRoom.get(socket.id);
+    if (!session) return;
+    const room = rooms.get(session.roomCode);
+    if (!room) return;
+
+    const result = room.declareKong(session.seat, tile);
+    if (result.success) {
+      broadcastRoomState(room);
+      if (result.isDraw || (room.phase === 'over' && room.winner === null)) {
+        io.to(room.code).emit('game:over', {
+          winner: null,
+          isDraw: true
+        });
+      } else {
+        scheduleBotAction(room);
+      }
+    }
+  });
+
   socket.on('disconnect', () => {
     const session = socketToRoom.get(socket.id);
     if (session) {
@@ -203,6 +232,10 @@ io.on('connection', (socket: Socket) => {
       if (room) {
         room.removePlayer(socket.id);
         if (room.players.every((p) => p === null || p.isBot)) {
+          if (roomBotTimers.has(session.roomCode)) {
+            clearTimeout(roomBotTimers.get(session.roomCode)!);
+            roomBotTimers.delete(session.roomCode);
+          }
           rooms.delete(session.roomCode);
           console.log(`[Room] Cleaned empty room ${session.roomCode}`);
         } else {
@@ -214,6 +247,128 @@ io.on('connection', (socket: Socket) => {
     console.log(`[Socket] Disconnected: ${socket.id}`);
   });
 });
+
+const roomBotTimers: Map<string, NodeJS.Timeout> = new Map();
+
+function chooseBotDiscard(hand: number[]): number {
+  const counts = new Map<number, number>();
+  for (const t of hand) counts.set(t, (counts.get(t) || 0) + 1);
+
+  // Buang ubin honor yang berdiri sendiri (27..33)
+  const isolatedHonors = hand.filter((t) => t >= 27 && t < 34 && counts.get(t) === 1);
+  if (isolatedHonors.length > 0) {
+    return isolatedHonors[0];
+  }
+
+  // Jika tidak ada, buang ubin terakhir dari tangan
+  return hand[hand.length - 1];
+}
+
+function scheduleBotAction(room: MahjongRoom) {
+  if (roomBotTimers.has(room.code)) {
+    clearTimeout(roomBotTimers.get(room.code)!);
+    roomBotTimers.delete(room.code);
+  }
+
+  if (room.phase === 'over' || room.phase === 'waiting') return;
+
+  let needsAction = false;
+  if (room.phase === 'claim') {
+    for (const [seat] of room.pendingClaims.entries()) {
+      if (room.players[seat]?.isBot) {
+        needsAction = true;
+        break;
+      }
+    }
+  } else if (room.phase === 'draw' || room.phase === 'discard') {
+    if (room.players[room.currentTurn]?.isBot) {
+      needsAction = true;
+    }
+  }
+
+  if (!needsAction) return;
+
+  const timer = setTimeout(() => {
+    roomBotTimers.delete(room.code);
+    runBotStep(room);
+  }, 600);
+  roomBotTimers.set(room.code, timer);
+}
+
+function runBotStep(room: MahjongRoom) {
+  if (room.phase === 'over' || room.phase === 'waiting') return;
+
+  // 1. Respon bot jika ada claim
+  if (room.phase === 'claim') {
+    for (const [seat] of Array.from(room.pendingClaims.entries())) {
+      const p = room.players[seat];
+      if (!p || !p.isBot) continue;
+
+      const opts = room.pendingClaims.get(seat);
+      if (!opts) continue;
+
+      if (opts.some((o) => o.kind === 'ron')) {
+        const res = room.claim(seat, 'ron');
+        broadcastRoomState(room);
+        if (res.winner !== null && res.fanSummary) {
+          io.to(room.code).emit('game:over', {
+            winner: res.winner,
+            fanSummary: res.fanSummary
+          });
+          return;
+        }
+      } else {
+        const res = room.passClaim(seat);
+        broadcastRoomState(room);
+        if (res.winner !== null && res.fanSummary) {
+          io.to(room.code).emit('game:over', {
+            winner: res.winner,
+            fanSummary: res.fanSummary
+          });
+          return;
+        }
+      }
+    }
+    broadcastRoomState(room);
+    scheduleBotAction(room);
+    return;
+  }
+
+  // 2. Giliran bot draw atau discard
+  const curr = room.players[room.currentTurn];
+  if (!curr || !curr.isBot) return;
+
+  if (room.phase === 'draw') {
+    room.draw(room.currentTurn);
+    broadcastRoomState(room);
+    if ((room.phase as string) === 'over' && room.winner === null) {
+      io.to(room.code).emit('game:over', {
+        winner: null,
+        isDraw: true
+      });
+      return;
+    }
+    scheduleBotAction(room);
+  } else if (room.phase === 'discard') {
+    const tsumoRes = room.tsumo(room.currentTurn);
+    if (tsumoRes.winner !== null && tsumoRes.fanSummary) {
+      broadcastRoomState(room);
+      io.to(room.code).emit('game:over', {
+        winner: tsumoRes.winner,
+        fanSummary: tsumoRes.fanSummary,
+        isTsumo: true
+      });
+      return;
+    }
+
+    const tileToDiscard = chooseBotDiscard(curr.hand);
+    const discardRes = room.discard(room.currentTurn, tileToDiscard);
+    if (discardRes.success) {
+      broadcastRoomState(room);
+    }
+    scheduleBotAction(room);
+  }
+}
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`MahjongIn-Server listening on port ${PORT}`);

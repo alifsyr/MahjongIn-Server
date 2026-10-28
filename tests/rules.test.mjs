@@ -188,4 +188,43 @@ assert.equal(prioRoom2.players[1].melds.length, 1, 'Player 1 got the Chi meld');
 assert.equal(prioRoom2.currentTurn, 1, 'Current turn is now Player 1');
 assert.equal(prioRoom2.phase, 'discard', 'Player 1 is now in discard phase');
 
+// Test P2: Kan dari Tangan Sendiri (Concealed Kong & Promoted Kong)
+const kongRoom = new MahjongRoom('KONG');
+kongRoom.addPlayer('p0', 'Player 0');
+kongRoom.addPlayer('p1', 'Player 1');
+kongRoom.addPlayer('p2', 'Player 2');
+kongRoom.addPlayer('p3', 'Player 3');
+kongRoom.startGame();
+
+// Kasus A: Concealed Kong (4 ubin identik di tangan)
+// Player 0 punya empat ubin 9 (1 Pin) + 10 ubin lainnya = 14 ubin saat giliran discard
+kongRoom.players[0].hand = [9, 9, 9, 9, 0, 1, 2, 4, 5, 6, 18, 19, 20, 27];
+kongRoom.currentTurn = 0;
+kongRoom.phase = 'discard';
+
+const stateP0 = kongRoom.getClientState(0);
+assert.equal(stateP0.canKongTiles.includes(9), true, 'Tile 9 is detectable for self-Kong');
+
+const cKongRes = kongRoom.declareKong(0, 9);
+assert.equal(cKongRes.success, true, 'Concealed Kong declared successfully');
+assert.equal(kongRoom.players[0].melds.length, 1, 'Player 0 now has 1 meld');
+assert.equal(kongRoom.players[0].melds[0].kind, 'kan', 'Meld is a Kan');
+assert.equal(kongRoom.players[0].melds[0].from, 0, 'Concealed Kong from is own seat');
+// 14 ubin - 4 ubin kan + 1 ubin pengganti = 11 ubin di tangan sebelum discard
+assert.equal(kongRoom.players[0].hand.length, 11, 'Hand has 11 tiles (10 + 1 replacement tile)');
+assert.equal(kongRoom.phase, 'discard', 'Still in discard phase to discard after Kong');
+
+// Kasus B: Promoted Kong (tambah ubin ke-4 pada open Pong yang sudah ada)
+kongRoom.players[0].melds = [{ kind: 'pon', tiles: [18, 18, 18], from: 1 }];
+kongRoom.players[0].hand = [18, 0, 1, 2, 4, 5, 6, 21, 22, 23, 27]; // 11 ubin di tangan (termasuk ubin 18)
+const statePromoted = kongRoom.getClientState(0);
+assert.equal(statePromoted.canKongTiles.includes(18), true, 'Tile 18 is detectable for Promoted Kong');
+
+const pKongRes = kongRoom.declareKong(0, 18);
+assert.equal(pKongRes.success, true, 'Promoted Kong declared successfully');
+assert.equal(kongRoom.players[0].melds[0].kind, 'kan', 'Meld upgraded to Kan');
+assert.equal(kongRoom.players[0].melds[0].tiles.length, 4, 'Kan meld now has 4 tiles');
+// 11 ubin - 1 ubin + 1 ubin pengganti = 11 ubin di tangan
+assert.equal(kongRoom.players[0].hand.length, 11, 'Hand still has 11 tiles after Promoted Kong replacement');
+
 console.log('MahjongIn-Server unit tests passed successfully!');

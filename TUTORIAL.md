@@ -176,9 +176,7 @@ Total: 1 + 1 + 1 = 3 fan. Poin dasar 3 fan adalah 160. Pemain yang membuang batu
 
 Server masih versi awal untuk uji coba bareng teman. Jadi ada beberapa hal yang belum jalan:
 
-1. Kan dari tangan sendiri (Concealed Kong) belum tersedia. Kan dari buangan lawan sudah aktif lengkap dengan penarikan ubin pengganti otomatis.
-2. Bot belum bergerak sendiri. Kalau giliran jatuh ke bot, permainan akan berhenti menunggu. Untuk saat ini, main dengan 4 pemain manusia.
-3. Kalau koneksi salah satu pemain putus, pemain itu dikeluarkan dari room.
+1. Kalau koneksi salah satu pemain putus, pemain itu dikeluarkan dari room. Reconnection token akan didukung pada pembaruan berikutnya.
 
 ## Daftar istilah singkat
 

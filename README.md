@@ -48,6 +48,7 @@ npm test
 | `game:claim` | `{ kind: 'chi'\|'pon'\|'kan'\|'ron', index?: number }` | Mengklaim ubin buangan lawan. |
 | `game:pass` | `{}` | Melewati kesempatan klaim ubin. |
 | `game:tsumo` | `{}` | Deklarasi menang saat draw sendiri (Ji Mo / Tsumo). |
+| `game:kong` | `{ tile: number }` | Deklarasi Kan dari tangan sendiri (Concealed/Promoted). |
 
 ### Server -> Client
 

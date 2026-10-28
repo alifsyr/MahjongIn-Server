@@ -60,4 +60,5 @@ export interface ClientGameState {
   } | null;
   turn: number;
   canTsumo?: boolean;
+  canKongTiles?: TileId[];
 }
