@@ -102,4 +102,90 @@ const drawWhenEmpty = testRoom.draw(2);
 assert.equal(drawWhenEmpty, null, 'Draw on empty wall returns null');
 assert.equal(testRoom.phase, 'over', 'Exhausted wall sets room phase to over');
 
+// Test P1: Tsumo (Menang Draw Sendiri & Payout 3 Lawan Bayar Rata)
+const tsumoRoom = new MahjongRoom('TSUM');
+tsumoRoom.addPlayer('p0', 'Player 0');
+tsumoRoom.addPlayer('p1', 'Player 1');
+tsumoRoom.addPlayer('p2', 'Player 2');
+tsumoRoom.addPlayer('p3', 'Player 3');
+tsumoRoom.startGame();
+
+// Berikan Player 0 tangan menang lengkap 14 ubin (4 melds + 1 pair)
+tsumoRoom.players[0].hand = [0,1,2, 3,4,5, 9,10,11, 18,19,20, 27,27];
+tsumoRoom.currentTurn = 0;
+tsumoRoom.phase = 'discard';
+
+const clientState = tsumoRoom.getClientState(0);
+assert.equal(clientState.canTsumo, true, 'Player 0 canTsumo is true with complete 14-tile hand');
+
+const tsumoRes = tsumoRoom.tsumo(0);
+assert.equal(tsumoRes.winner, 0, 'Player 0 wins by Tsumo');
+assert.equal(tsumoRoom.phase, 'over', 'Phase changed to over after Tsumo');
+// Hitung skor: Tiap lawan harus berkurang basePoints, dan Player 0 bertambah 3 * basePoints
+const basePts = tsumoRes.fanSummary.basePoints;
+assert.equal(tsumoRoom.players[1].score, 10000 - basePts, 'Opponent 1 pays basePoints');
+assert.equal(tsumoRoom.players[2].score, 10000 - basePts, 'Opponent 2 pays basePoints');
+assert.equal(tsumoRoom.players[3].score, 10000 - basePts, 'Opponent 3 pays basePoints');
+assert.equal(tsumoRoom.players[0].score, 10000 + 3 * basePts, 'Winner receives 3 * basePoints');
+
+// Test P1: Hirarki Prioritas Klaim (Ron > Pon > Chi)
+const prioRoom = new MahjongRoom('PRIO');
+prioRoom.addPlayer('p0', 'Player 0');
+prioRoom.addPlayer('p1', 'Player 1');
+prioRoom.addPlayer('p2', 'Player 2');
+prioRoom.addPlayer('p3', 'Player 3');
+prioRoom.startGame();
+
+// Player 0 discards 2 Wan (tile 1)
+prioRoom.players[0].hand = [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+// Player 1 can Chi (has 1 Wan & 3 Wan)
+prioRoom.players[1].hand = [0, 2, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21];
+// Player 2 can Pon (has two 2 Wan)
+prioRoom.players[2].hand = [1, 1, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21];
+// Player 3 can Ron (waiting on 2 Wan to complete hand)
+prioRoom.players[3].hand = [0, 2, 3, 4, 5, 9, 10, 11, 18, 19, 20, 27, 27];
+
+prioRoom.currentTurn = 0;
+prioRoom.phase = 'discard';
+prioRoom.discard(0, 1);
+assert.equal(prioRoom.phase, 'claim', 'Discard tile 1 entered claim phase');
+
+// Kasus 1: Player 1 klik Chi lebih cepat dari Player 3. Karena Player 3 bisa Ron, Chi harus di-stage.
+const chiAttempt = prioRoom.claim(1, 'chi');
+assert.equal(chiAttempt.staged, true, 'Chi is staged because higher priority options exist');
+assert.equal(prioRoom.phase, 'claim', 'Still in claim phase waiting for higher priority resolution');
+
+// Player 3 klik Ron -> Ron langsung menang mengabaikan Chi!
+const ronAttempt = prioRoom.claim(3, 'ron');
+assert.equal(ronAttempt.winner, 3, 'Player 3 wins by Ron with highest priority');
+assert.equal(prioRoom.phase, 'over', 'Game over after Ron executes');
+
+// Kasus 2: Chi ter-eksekusi otomatis saat Pon pass
+const prioRoom2 = new MahjongRoom('PRI2');
+prioRoom2.addPlayer('p0', 'Player 0');
+prioRoom2.addPlayer('p1', 'Player 1');
+prioRoom2.addPlayer('p2', 'Player 2');
+prioRoom2.addPlayer('p3', 'Player 3');
+prioRoom2.startGame();
+
+prioRoom2.players[0].hand = [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+prioRoom2.players[1].hand = [0, 2, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21]; // Can Chi tile 1
+prioRoom2.players[2].hand = [1, 1, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21]; // Can Pon tile 1
+prioRoom2.players[3].hand = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]; // No claim
+
+prioRoom2.currentTurn = 0;
+prioRoom2.phase = 'discard';
+prioRoom2.discard(0, 1);
+
+// Player 1 klik Chi -> di-stage karena Player 2 punya Pon
+const chiAttempt2 = prioRoom2.claim(1, 'chi');
+assert.equal(chiAttempt2.staged, true, 'Chi is staged waiting for Pon decision');
+
+// Player 2 klik Pass -> Chi milik Player 1 otomatis dieksekusi!
+const passRes = prioRoom2.passClaim(2);
+assert.equal(passRes.resolved, true, 'Staged Chi automatically executed when Pon passed');
+assert.equal(prioRoom2.players[1].melds.length, 1, 'Player 1 got the Chi meld');
+assert.equal(prioRoom2.currentTurn, 1, 'Current turn is now Player 1');
+assert.equal(prioRoom2.phase, 'discard', 'Player 1 is now in discard phase');
+
 console.log('MahjongIn-Server unit tests passed successfully!');

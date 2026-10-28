@@ -47,6 +47,7 @@ npm test
 | `game:discard` | `{ tile: number }` | Membuang ubin dari tangan. |
 | `game:claim` | `{ kind: 'chi'\|'pon'\|'kan'\|'ron', index?: number }` | Mengklaim ubin buangan lawan. |
 | `game:pass` | `{}` | Melewati kesempatan klaim ubin. |
+| `game:tsumo` | `{}` | Deklarasi menang saat draw sendiri (Ji Mo / Tsumo). |
 
 ### Server -> Client
 

@@ -8,6 +8,12 @@ import {
   fanToPoints
 } from './rules.js';
 
+export function claimPriority(kind: 'chi' | 'pon' | 'kan' | 'ron'): number {
+  if (kind === 'ron') return 3;
+  if (kind === 'pon' || kind === 'kan') return 2;
+  return 1;
+}
+
 export class MahjongRoom {
   public code: string;
   public players: (ServerPlayer | null)[] = [null, null, null, null];
@@ -17,6 +23,7 @@ export class MahjongRoom {
   public phase: 'waiting' | 'draw' | 'discard' | 'claim' | 'resolving' | 'over' = 'waiting';
   public lastDiscard: { seat: number; tile: TileId } | null = null;
   public pendingClaims: Map<number, ClaimOption[]> = new Map();
+  public stagedClaims: Map<number, { kind: 'chi' | 'pon' | 'kan' | 'ron'; choiceIndex: number }> = new Map();
   public winner: number | null = null;
 
   constructor(code: string) {
@@ -76,6 +83,7 @@ export class MahjongRoom {
     this.turnNumber = 1;
     this.lastDiscard = null;
     this.pendingClaims.clear();
+    this.stagedClaims.clear();
     this.winner = null;
 
     for (let s = 0; s < 4; s++) {
@@ -182,6 +190,7 @@ export class MahjongRoom {
     this.turnNumber++;
 
     this.pendingClaims.clear();
+    this.stagedClaims.clear();
     const claimsObj: { [s: number]: ClaimOption[] } = {};
 
     for (let s = 0; s < 4; s++) {
@@ -204,7 +213,7 @@ export class MahjongRoom {
     return { success: true, claims: claimsObj };
   }
 
-  public claim(seat: number, kind: 'chi' | 'pon' | 'kan' | 'ron', choiceIndex = 0): {
+  private executeClaim(seat: number, kind: 'chi' | 'pon' | 'kan' | 'ron', choiceIndex = 0): {
     winner: number | null;
     isDraw?: boolean;
     fanSummary?: { totalFan: number; basePoints: number; items: any[] };
@@ -230,6 +239,9 @@ export class MahjongRoom {
       const shooterPay = basePoints * 2;
       this.players[discarder]!.score -= shooterPay;
       player.score += shooterPay;
+      this.pendingClaims.clear();
+      this.stagedClaims.clear();
+      this.lastDiscard = null;
       return { winner: seat, fanSummary: { totalFan: fan.totalFan, basePoints, items: fan.items } };
     }
 
@@ -238,6 +250,7 @@ export class MahjongRoom {
     source.discards.pop();
     this.lastDiscard = null;
     this.pendingClaims.clear();
+    this.stagedClaims.clear();
 
     for (const t of selected.consume) {
       const idx = player.hand.indexOf(t);
@@ -263,17 +276,99 @@ export class MahjongRoom {
     return { winner: null };
   }
 
-  public passClaim(seat: number): boolean {
+  public claim(seat: number, kind: 'chi' | 'pon' | 'kan' | 'ron', choiceIndex = 0): {
+    winner: number | null;
+    staged?: boolean;
+    isDraw?: boolean;
+    fanSummary?: { totalFan: number; basePoints: number; items: any[] };
+  } {
+    const opts = this.pendingClaims.get(seat);
+    if (!opts || !this.lastDiscard) return { winner: null };
+
+    const matching = opts.filter((o) => o.kind === kind);
+    const selected = matching[choiceIndex] || matching[0];
+    if (!selected) return { winner: null };
+
+    const myPri = claimPriority(kind);
+    const hasHigher = Array.from(this.pendingClaims.entries()).some(([s, oList]) => {
+      return s !== seat && oList.some((o) => claimPriority(o.kind) > myPri);
+    });
+
+    if (hasHigher) {
+      this.stagedClaims.set(seat, { kind, choiceIndex });
+      return { winner: null, staged: true };
+    }
+
+    return this.executeClaim(seat, kind, choiceIndex);
+  }
+
+  public passClaim(seat: number): {
+    resolved: boolean;
+    winner: number | null;
+    isDraw?: boolean;
+    fanSummary?: { totalFan: number; basePoints: number; items: any[] };
+  } {
     this.pendingClaims.delete(seat);
+    this.stagedClaims.delete(seat);
+
     if (this.pendingClaims.size === 0) {
       if (this.lastDiscard) {
         this.currentTurn = (this.lastDiscard.seat + 1) % 4;
         this.lastDiscard = null;
       }
       this.phase = 'draw';
-      return true;
+      return { resolved: true, winner: null };
     }
-    return false;
+
+    const sortedStaged = Array.from(this.stagedClaims.entries()).sort(
+      (a, b) => claimPriority(b[1].kind) - claimPriority(a[1].kind)
+    );
+
+    for (const [stagedSeat, staged] of sortedStaged) {
+      const stagedPri = claimPriority(staged.kind);
+      const stillBlocked = Array.from(this.pendingClaims.entries()).some(
+        ([s, opts]) => s !== stagedSeat && opts.some((o) => claimPriority(o.kind) > stagedPri)
+      );
+      if (!stillBlocked) {
+        const exec = this.executeClaim(stagedSeat, staged.kind, staged.choiceIndex);
+        return { resolved: true, ...exec };
+      }
+    }
+
+    return { resolved: false, winner: null };
+  }
+
+  public tsumo(seat: number): {
+    winner: number | null;
+    fanSummary?: { totalFan: number; basePoints: number; items: any[] };
+  } {
+    if (this.currentTurn !== seat || this.phase !== 'discard') {
+      return { winner: null };
+    }
+    const player = this.players[seat];
+    if (!player) return { winner: null };
+
+    if (!isWinningHand(player.hand, player.melds.length)) {
+      return { winner: null };
+    }
+
+    this.phase = 'over';
+    this.winner = seat;
+
+    const fan = calculateFan(player, 'Tsumo', null, null);
+    const basePoints = fanToPoints(fan.totalFan);
+
+    for (let s = 0; s < 4; s++) {
+      if (s !== seat && this.players[s]) {
+        this.players[s]!.score -= basePoints;
+        player.score += basePoints;
+      }
+    }
+
+    return {
+      winner: seat,
+      fanSummary: { totalFan: fan.totalFan, basePoints, items: fan.items }
+    };
   }
 
   public getClientState(seat: number): ClientGameState | null {
@@ -305,6 +400,12 @@ export class MahjongRoom {
       options: pendingOpts
     } : null;
 
+    const canTsumo = (
+      this.currentTurn === seat &&
+      this.phase === 'discard' &&
+      isWinningHand(player.hand, player.melds.length)
+    );
+
     return {
       roomCode: this.code,
       seat,
@@ -318,7 +419,8 @@ export class MahjongRoom {
       opponents,
       lastDiscard: this.lastDiscard,
       pendingClaim,
-      turn: this.turnNumber
+      turn: this.turnNumber,
+      canTsumo
     };
   }
 }

@@ -59,4 +59,5 @@ export interface ClientGameState {
     options: ClaimOption[];
   } | null;
   turn: number;
+  canTsumo?: boolean;
 }

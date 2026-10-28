@@ -164,8 +164,36 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(session.roomCode);
     if (!room) return;
 
-    room.passClaim(session.seat);
+    const result = room.passClaim(session.seat);
     broadcastRoomState(room);
+    if (result && result.winner !== null && result.fanSummary) {
+      io.to(room.code).emit('game:over', {
+        winner: result.winner,
+        fanSummary: result.fanSummary
+      });
+    } else if (result && (result.isDraw || (room.phase === 'over' && room.winner === null))) {
+      io.to(room.code).emit('game:over', {
+        winner: null,
+        isDraw: true
+      });
+    }
+  });
+
+  socket.on('game:tsumo', () => {
+    const session = socketToRoom.get(socket.id);
+    if (!session) return;
+    const room = rooms.get(session.roomCode);
+    if (!room) return;
+
+    const result = room.tsumo(session.seat);
+    if (result.winner !== null && result.fanSummary) {
+      broadcastRoomState(room);
+      io.to(room.code).emit('game:over', {
+        winner: result.winner,
+        fanSummary: result.fanSummary,
+        isTsumo: true
+      });
+    }
   });
 
   socket.on('disconnect', () => {
