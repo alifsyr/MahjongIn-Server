@@ -18,7 +18,8 @@ export function claimPriority(kind: 'chi' | 'pon' | 'kan' | 'ron'): number {
 export class MahjongRoom {
   public code: string;
   public players: (ServerPlayer | null)[] = [null, null, null, null];
-  public wall: TileId[] = [];
+  public liveWall: TileId[] = [];
+  public deadWall: TileId[] = [];
   public currentTurn: number = 0;
   public turnNumber: number = 1;
   public phase: 'waiting' | 'draw' | 'discard' | 'claim' | 'resolving' | 'over' = 'waiting';
@@ -27,15 +28,25 @@ export class MahjongRoom {
   public stagedClaims: Map<number, { kind: 'chi' | 'pon' | 'kan' | 'ron'; choiceIndex: number }> = new Map();
   public winner: number | null = null;
 
+  public get wall(): TileId[] {
+    return this.liveWall;
+  }
+
+  public set wall(w: TileId[]) {
+    this.liveWall = w;
+  }
+
   constructor(code: string) {
     this.code = code;
   }
 
-  public addPlayer(id: string, name: string): number | null {
+  public addPlayer(id: string, name: string, sessionToken?: string): number | null {
     const seat = this.players.findIndex((p) => p === null);
     if (seat === -1) return null;
+    const token = sessionToken || Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
     this.players[seat] = {
       id,
+      sessionToken: token,
       name,
       seat,
       hand: [],
@@ -44,15 +55,28 @@ export class MahjongRoom {
       melds: [],
       score: 10000,
       isReady: false,
-      isBot: false
+      isBot: false,
+      isConnected: true
     };
     return seat;
+  }
+
+  public reconnectPlayer(socketId: string, sessionToken: string): number | null {
+    const player = this.players.find((p) => p !== null && p.sessionToken === sessionToken);
+    if (!player) return null;
+    player.id = socketId;
+    player.isConnected = true;
+    return player.seat;
   }
 
   public removePlayer(id: string): number | null {
     const seat = this.players.findIndex((p) => p?.id === id);
     if (seat === -1) return null;
-    this.players[seat] = null;
+    if (this.phase === 'waiting') {
+      this.players[seat] = null;
+    } else {
+      this.players[seat]!.isConnected = false;
+    }
     return seat;
   }
 
@@ -63,6 +87,7 @@ export class MahjongRoom {
       if (this.players[s] === null) {
         this.players[s] = {
           id: `bot-${s}`,
+          sessionToken: `bot-token-${s}`,
           name: BOT_NAMES[botIdx++] || `Bot ${s}`,
           seat: s,
           hand: [],
@@ -71,14 +96,17 @@ export class MahjongRoom {
           melds: [],
           score: 10000,
           isReady: true,
-          isBot: true
+          isBot: true,
+          isConnected: true
         };
       }
     }
   }
 
   public startGame(): void {
-    this.wall = createShuffledWall();
+    const fullWall = createShuffledWall();
+    this.deadWall = fullWall.splice(-14);
+    this.liveWall = fullWall;
     this.phase = 'draw';
     this.currentTurn = 0;
     this.turnNumber = 1;
@@ -99,7 +127,7 @@ export class MahjongRoom {
 
     for (let n = 0; n < 13; n++) {
       for (let s = 0; s < 4; s++) {
-        const tile = this.wall.pop();
+        const tile = this.liveWall.pop();
         if (tile !== undefined) this.players[s]?.hand.push(tile);
       }
     }
@@ -110,25 +138,36 @@ export class MahjongRoom {
     }
   }
 
+  public drawDeadWallTile(): TileId | undefined {
+    let tile = this.deadWall.pop();
+    if (tile === undefined && this.liveWall.length > 0) {
+      tile = this.liveWall.pop();
+    } else if (tile !== undefined && this.liveWall.length > 0) {
+      const shift = this.liveWall.pop()!;
+      this.deadWall.unshift(shift);
+    }
+    return tile;
+  }
+
   private replaceInitialFlowers(seat: number): void {
     const player = this.players[seat];
     if (!player) return;
     let found = true;
-    while (found && this.wall.length > 0) {
+    while (found) {
       const idx = player.hand.findIndex(isFlower);
       if (idx === -1) {
         found = false;
       } else {
         const flower = player.hand.splice(idx, 1)[0];
         player.flowers.push(flower);
-        const replacement = this.wall.pop();
+        const replacement = this.drawDeadWallTile();
         if (replacement !== undefined) player.hand.push(replacement);
       }
     }
   }
 
   private drawTileWithFlowers(seat: number): { tile: TileId; flowers: TileId[] } | null {
-    if (this.wall.length === 0) {
+    if (this.liveWall.length === 0) {
       this.phase = 'over';
       return null;
     }
@@ -136,22 +175,20 @@ export class MahjongRoom {
     if (!player) return null;
 
     const flowers: TileId[] = [];
-    let tile = this.wall.pop();
+    let tile = this.liveWall.pop();
     if (tile === undefined) {
       this.phase = 'over';
       return null;
     }
 
-    while (isFlower(tile) && this.wall.length > 0) {
+    while (isFlower(tile)) {
       flowers.push(tile);
       player.flowers.push(tile);
-      tile = this.wall.pop()!;
-    }
-
-    if (isFlower(tile)) {
-      player.flowers.push(tile);
-      this.phase = 'over';
-      return null;
+      tile = this.drawDeadWallTile();
+      if (tile === undefined) {
+        this.phase = 'over';
+        return null;
+      }
     }
 
     player.hand.push(tile);
@@ -169,7 +206,29 @@ export class MahjongRoom {
   }
 
   public drawReplacement(seat: number): { tile: TileId; flowers: TileId[] } | null {
-    return this.drawTileWithFlowers(seat);
+    const player = this.players[seat];
+    if (!player) return null;
+
+    let tile = this.drawDeadWallTile();
+    if (tile === undefined) {
+      this.phase = 'over';
+      return null;
+    }
+
+    const flowers: TileId[] = [];
+    while (isFlower(tile)) {
+      flowers.push(tile);
+      player.flowers.push(tile);
+      tile = this.drawDeadWallTile();
+      if (tile === undefined) {
+        this.phase = 'over';
+        return null;
+      }
+    }
+
+    player.hand.push(tile);
+    player.hand.sort((a, b) => a - b);
+    return { tile, flowers };
   }
 
   public discard(seat: number, tile: TileId): {
@@ -430,7 +489,8 @@ export class MahjongRoom {
           discards: [...opp.discards],
           melds: [...opp.melds],
           score: opp.score,
-          isBot: opp.isBot
+          isBot: opp.isBot,
+          isConnected: opp.isConnected
         });
       }
     }
@@ -462,7 +522,7 @@ export class MahjongRoom {
     return {
       roomCode: this.code,
       seat,
-      wallCount: this.wall.length,
+      wallCount: this.liveWall.length,
       currentTurn: this.currentTurn,
       phase: this.phase,
       myHand: [...player.hand],
@@ -474,7 +534,8 @@ export class MahjongRoom {
       pendingClaim,
       turn: this.turnNumber,
       canTsumo,
-      canKongTiles
+      canKongTiles,
+      deadWallCount: this.deadWall.length
     };
   }
 }

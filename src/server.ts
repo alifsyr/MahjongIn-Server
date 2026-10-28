@@ -56,21 +56,36 @@ io.on('connection', (socket: Socket) => {
       return;
     }
 
+    const sessionToken = room.players[seat]?.sessionToken;
     rooms.set(code, room);
     socketToRoom.set(socket.id, { roomCode: code, seat });
     socket.join(code);
     console.log(`[Room] Created ${code} by ${name} (Seat ${seat})`);
 
-    socket.emit('room:joined', { roomCode: code, seat });
+    socket.emit('room:joined', { roomCode: code, seat, sessionToken });
     broadcastRoomState(room);
   });
 
-  socket.on('room:join', ({ roomCode, name }: { roomCode: string; name: string }) => {
+  socket.on('room:join', ({ roomCode, name, sessionToken }: { roomCode: string; name: string; sessionToken?: string }) => {
     const code = (roomCode || '').toUpperCase().trim();
     const room = rooms.get(code);
     if (!room) {
       socket.emit('error', `Room ${code} tidak ditemukan.`);
       return;
+    }
+
+    // Cek reconnect dengan sessionToken
+    if (sessionToken) {
+      const reconnectedSeat = room.reconnectPlayer(socket.id, sessionToken);
+      if (reconnectedSeat !== null) {
+        socketToRoom.set(socket.id, { roomCode: code, seat: reconnectedSeat });
+        socket.join(code);
+        console.log(`[Room] Player reconnected to ${code} as Seat ${reconnectedSeat}`);
+        socket.emit('room:joined', { roomCode: code, seat: reconnectedSeat, sessionToken });
+        broadcastRoomState(room);
+        scheduleBotAction(room);
+        return;
+      }
     }
 
     const seat = room.addPlayer(socket.id, name || 'Pemain');
@@ -79,12 +94,35 @@ io.on('connection', (socket: Socket) => {
       return;
     }
 
+    const playerToken = room.players[seat]?.sessionToken;
     socketToRoom.set(socket.id, { roomCode: code, seat });
     socket.join(code);
     console.log(`[Room] ${name} joined ${code} as Seat ${seat}`);
 
-    socket.emit('room:joined', { roomCode: code, seat });
+    socket.emit('room:joined', { roomCode: code, seat, sessionToken: playerToken });
     broadcastRoomState(room);
+  });
+
+  socket.on('room:reconnect', ({ roomCode, sessionToken }: { roomCode: string; sessionToken: string }) => {
+    const code = (roomCode || '').toUpperCase().trim();
+    const room = rooms.get(code);
+    if (!room) {
+      socket.emit('error', `Room ${code} tidak ditemukan.`);
+      return;
+    }
+
+    const reconnectedSeat = room.reconnectPlayer(socket.id, sessionToken);
+    if (reconnectedSeat === null) {
+      socket.emit('error', 'Sesi tidak valid atau telah berakhir.');
+      return;
+    }
+
+    socketToRoom.set(socket.id, { roomCode: code, seat: reconnectedSeat });
+    socket.join(code);
+    console.log(`[Room] Player reconnected to ${code} as Seat ${reconnectedSeat}`);
+    socket.emit('room:joined', { roomCode: code, seat: reconnectedSeat, sessionToken });
+    broadcastRoomState(room);
+    scheduleBotAction(room);
   });
 
   socket.on('room:fill-bots', () => {

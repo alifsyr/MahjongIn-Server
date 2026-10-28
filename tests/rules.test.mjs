@@ -227,4 +227,41 @@ assert.equal(kongRoom.players[0].melds[0].tiles.length, 4, 'Kan meld now has 4 t
 // 11 ubin - 1 ubin + 1 ubin pengganti = 11 ubin di tangan
 assert.equal(kongRoom.players[0].hand.length, 11, 'Hand still has 11 tiles after Promoted Kong replacement');
 
+// Test P3: Penanganan Reconnect Pemain
+const recRoom = new MahjongRoom('RECO');
+recRoom.addPlayer('socket-old', 'Pemain Reconnect');
+recRoom.fillBots();
+recRoom.startGame();
+
+const token = recRoom.players[0].sessionToken;
+assert.equal(typeof token, 'string', 'Session token generated for player');
+assert.equal(recRoom.players[0].isConnected, true, 'Player initially connected');
+
+// Simulasi disconnect di tengah game
+recRoom.removePlayer('socket-old');
+assert.equal(recRoom.players[0].isConnected, false, 'Player marked disconnected');
+assert.equal(recRoom.players[0].hand.length >= 13, true, 'Hand preserved while disconnected');
+
+// Reconnect dengan socket baru dan sessionToken lama
+const reSeat = recRoom.reconnectPlayer('socket-new', token);
+assert.equal(reSeat, 0, 'Reconnected to seat 0');
+assert.equal(recRoom.players[0].id, 'socket-new', 'Socket ID updated to new connection');
+assert.equal(recRoom.players[0].isConnected, true, 'Player marked connected again');
+
+// Test P3: Pemisahan Dead Wall (14 Ubin)
+const dwRoom = new MahjongRoom('DWAL');
+dwRoom.addPlayer('p0', 'Player 0');
+dwRoom.fillBots();
+dwRoom.startGame();
+
+assert.equal(dwRoom.deadWall.length, 14, 'Dead wall initialized with 14 tiles');
+assert.equal(dwRoom.liveWall.length > 50, true, 'Live wall holds remaining playable tiles');
+
+// Menarik ubin pengganti dari dead wall tetap mempertahankan 14 ubin (diambil 1 dari tail live wall)
+const initialLiveCount = dwRoom.liveWall.length;
+const drawnDead = dwRoom.drawDeadWallTile();
+assert.equal(typeof drawnDead, 'number', 'Dead wall tile drawn');
+assert.equal(dwRoom.deadWall.length, 14, 'Dead wall maintained at 14 tiles');
+assert.equal(dwRoom.liveWall.length, initialLiveCount - 1, 'Live wall supplied replenishment tile to dead wall');
+
 console.log('MahjongIn-Server unit tests passed successfully!');

@@ -19,6 +19,7 @@ export interface FanItem {
 
 export interface ServerPlayer {
   id: string; // Socket ID or user ID
+  sessionToken: string;
   name: string;
   seat: number; // 0=Timur, 1=Selatan, 2=Barat, 3=Utara
   hand: TileId[];
@@ -28,6 +29,7 @@ export interface ServerPlayer {
   score: number;
   isReady: boolean;
   isBot: boolean;
+  isConnected: boolean;
 }
 
 export interface MaskedOpponent {
@@ -39,6 +41,7 @@ export interface MaskedOpponent {
   melds: Meld[];
   score: number;
   isBot: boolean;
+  isConnected?: boolean;
 }
 
 export interface ClientGameState {
@@ -61,4 +64,5 @@ export interface ClientGameState {
   turn: number;
   canTsumo?: boolean;
   canKongTiles?: TileId[];
+  deadWallCount?: number;
 }
